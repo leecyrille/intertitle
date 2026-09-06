@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Intertitle — skip scenes, mute lines, drop in a title card. No re-encoding.</title>
-<meta name="description" content="Intertitle is a free, open source Windows app that cuts scenes out of your movies, mutes lines and inserts text cards, without re-encoding. 4K HEVC in minutes, subtitles kept.">
+<title>Intertitle — skip a scene, mute a line, show a card instead. No re-encoding.</title>
+<meta name="description" content="Intertitle is a free app that cuts scenes out of your movies, mutes lines and puts a text card in their place. Nothing is re-encoded, so it takes minutes, loses no quality, and the whole app is under 2 MB.">
 <meta property="og:title" content="Intertitle">
-<meta property="og:description" content="Skip scenes, mute lines and drop in a title card. No re-encoding, no quality loss.">
+<meta property="og:description" content="Skip a scene, mute a line, show a card that says what happened. No re-encoding. Free, under 2 MB.">
+<meta property="og:image" content="https://intertitle.pages.dev/img/app-main.png">
 <meta property="og:type" content="website">
 <link rel="icon" href="favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,67 +15,74 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --ink:#f2efe6; --ink-dim:#a9a49a; --bg:#15131d; --bg2:#1e1b2b; --line:#2f2c3d;
+    --ink:#f2efe6; --ink-dim:#aaa59b; --bg:#15131d; --bg2:#1e1b2b; --line:#2f2c3d;
     --accent:#f0c36a; --accent-ink:#1e1b4b; --card:#f5f0e6;
     --remove:#e2574c; --replace:#f0c36a; --text:#a78bfa; --mute:#60a5fa;
   }
   *{box-sizing:border-box}
-  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;line-height:1.55}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;line-height:1.55;font-size:17px}
   a{color:var(--accent)}
   h1,h2,h3{font-family:Fraunces,Georgia,serif;font-weight:600;letter-spacing:-.01em;margin:0 0 .4em}
-  h1{font-size:clamp(34px,6vw,60px);line-height:1.05}
-  h2{font-size:clamp(24px,3.4vw,34px);margin-top:0}
+  h1{font-size:clamp(34px,5.6vw,58px);line-height:1.05}
+  h2{font-size:clamp(26px,3.6vw,36px)}
+  h3{font-size:20px}
   p{margin:.4em 0 1em}
-  .wrap{max-width:1040px;margin:0 auto;padding:0 22px}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 22px}
   header{display:flex;align-items:center;gap:14px;padding:18px 0}
-  .brand{display:inline-flex;align-items:baseline;font-family:Fraunces,Georgia,serif;font-weight:600}
+  .brand{display:inline-flex;align-items:baseline;font-family:Fraunces,Georgia,serif;font-weight:600;text-decoration:none}
   .brand span:first-child{background:var(--card);color:var(--accent-ink);padding:2px 9px;border-radius:5px 0 0 5px;font-size:20px}
   .brand span:last-child{background:var(--accent-ink);color:var(--card);padding:2px 9px;border-radius:0 5px 5px 0;font-size:17px;letter-spacing:.06em}
-  nav{margin-left:auto;display:flex;gap:18px;font-size:14px}
+  nav{margin-left:auto;display:flex;gap:20px;font-size:15px}
   nav a{color:var(--ink-dim);text-decoration:none}
   nav a:hover{color:var(--ink)}
-  .hero{padding:56px 0 30px;display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center}
-  .hero p.lead{font-size:19px;color:var(--ink-dim);max-width:34em}
-  .cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:22px}
-  .btn{display:inline-block;padding:12px 20px;border-radius:9px;font-weight:600;text-decoration:none;border:1px solid var(--line);color:var(--ink);background:var(--bg2)}
-  .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
-  .btn:hover{filter:brightness(1.08)}
-  .req{font-size:13px;color:var(--ink-dim);margin-top:10px}
-  /* fake card demo */
-  .demo{background:#000;border-radius:12px;border:1px solid var(--line);overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.5)}
-  .demo .screen{aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;text-align:center;padding:8%;font-family:Arial,Helvetica,sans-serif;color:#fff;font-size:clamp(14px,1.6vw,20px);line-height:1.5;background:#000;animation:fade 6s ease-in-out infinite}
-  @keyframes fade{0%,12%{opacity:0}25%,85%{opacity:1}100%{opacity:0}}
-  .demo .bar{display:flex;height:34px;background:#1a1a22;position:relative}
-  .demo .bar i{flex:1;background:linear-gradient(135deg,#3b2a4a,#1e2a3a);border-right:1px solid #000}
-  .demo .bar b{position:absolute;top:0;bottom:0;opacity:.7}
-  .demo .bar .r{left:18%;width:9%;background:var(--remove)}
-  .demo .bar .c{left:47%;width:6%;background:var(--replace)}
-  .demo .bar .m{left:71%;width:4%;background:var(--mute)}
-  .demo .bar .t{left:84%;width:5%;background:var(--text)}
-  .demo .bar .ph{position:absolute;top:-3px;bottom:-3px;left:50%;width:2px;background:#fff}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin:26px 0}
+  section{padding:44px 0;border-top:1px solid var(--line)}
+  .lead{font-size:20px;color:var(--ink-dim);max-width:36em}
+  .hero{padding:40px 0 34px;text-align:center}
+  .hero .lead{margin:0 auto 22px}
+  .demo{max-width:900px;margin:0 auto;background:#000;border-radius:14px;border:1px solid var(--line);overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.55)}
+  .demo video{display:block;width:100%;height:auto}
+  .caption{font-size:14px;color:var(--ink-dim);margin:12px auto 0;max-width:60em}
+  .fact{display:inline-block;background:var(--bg2);border:1px solid var(--line);border-radius:99px;padding:5px 14px;font-size:14px;color:var(--ink-dim);margin:4px 3px}
+  .fact b{color:var(--accent)}
+  .dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin:18px 0 8px}
+  .dlbtn{display:flex;flex-direction:column;gap:2px;padding:16px 18px;border-radius:12px;text-decoration:none;color:var(--accent-ink);background:var(--accent);border:1px solid var(--accent);transition:.15s}
+  .dlbtn:hover{filter:brightness(1.07);transform:translateY(-1px)}
+  .dlbtn.alt{background:var(--bg2);color:var(--ink);border-color:var(--line)}
+  .dlbtn b{font-size:18px}
+  .dlbtn span{font-size:13px;opacity:.85}
+  .note{font-size:14px;color:var(--ink-dim)}
+  .steps{counter-reset:s;list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+  .steps li{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:18px;color:var(--ink-dim);font-size:16px}
+  .steps li::before{counter-increment:s;content:counter(s);display:block;font-family:Fraunces,serif;font-size:30px;color:var(--accent);margin-bottom:6px}
+  .steps li b{color:var(--ink)}
+  .shots{display:grid;gap:22px;margin-top:26px}
+  .shot{background:var(--bg2);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .shot img{display:block;width:100%;height:auto}
+  .shot .cap{padding:12px 16px;font-size:15px;color:var(--ink-dim)}
+  .shot .cap b{color:var(--ink)}
+  .ba{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:center;margin-top:10px}
+  .ba img{width:100%;height:auto;border-radius:10px;border:1px solid var(--line);display:block}
+  .ba .arrow{font-size:34px;color:var(--accent)}
+  .ba .lbl{font-size:14px;color:var(--ink-dim);margin-top:6px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin:22px 0}
   .tile{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:18px 18px 12px}
-  .tile h3{font-size:18px;margin-bottom:6px}
-  .tile p{color:var(--ink-dim);font-size:15px;margin:0 0 .4em}
-  .tile .tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;margin-bottom:10px;color:#000;font-weight:600}
-  section{padding:34px 0;border-top:1px solid var(--line)}
-  table{border-collapse:collapse;width:100%;font-size:15px}
-  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
-  th{color:var(--ink-dim);font-weight:500}
-  kbd{display:inline-block;padding:0 6px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;background:var(--bg2);font-family:Consolas,monospace;font-size:12px;line-height:19px}
+  .tile h3{margin-bottom:6px}
+  .tile p{color:var(--ink-dim);font-size:16px;margin:0 0 .4em}
+  .tile .tag{display:inline-block;font-size:12px;padding:2px 9px;border-radius:99px;margin-bottom:10px;color:#000;font-weight:600}
+  details{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:8px 0}
+  summary{cursor:pointer;font-weight:600;font-size:17px}
+  details p{color:var(--ink-dim);margin:.6em 0 .2em}
+  kbd{display:inline-block;padding:0 6px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;background:var(--bg2);font-family:Consolas,monospace;font-size:13px;line-height:20px}
   pre{background:#0d0c14;border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow:auto;font-size:13px;line-height:1.5}
   code{font-family:Consolas,"Cascadia Mono",monospace}
-  .steps{counter-reset:s;list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
-  .steps li{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:18px;color:var(--ink-dim);font-size:15px}
-  .steps li::before{counter-increment:s;content:counter(s);display:block;font-family:Fraunces,serif;font-size:28px;color:var(--accent);margin-bottom:6px}
-  .steps li b{color:var(--ink)}
   .tipcard{display:inline-flex;align-items:center;gap:8px;padding:12px 18px;border:1px dashed var(--accent);border-radius:12px;color:var(--ink);text-decoration:none;background:var(--bg2);transition:.15s}
   .tipcard:hover{transform:translateY(-1px);border-style:solid}
   .tipcard b{color:var(--accent)}
   .support{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .btn{display:inline-block;padding:11px 18px;border-radius:9px;font-weight:600;text-decoration:none;border:1px solid var(--line);color:var(--ink);background:var(--bg2)}
   footer{padding:30px 0 50px;color:var(--ink-dim);font-size:14px;border-top:1px solid var(--line)}
   footer a{color:var(--ink-dim)}
-  @media (max-width:800px){.hero{grid-template-columns:1fr;padding-top:30px}nav{display:none}}
+  @media (max-width:760px){nav{display:none}.ba{grid-template-columns:1fr}.ba .arrow{transform:rotate(90deg);text-align:center}}
 </style>
 </head>
 <body>
@@ -82,75 +90,117 @@
   <header>
     <a class="brand" href="/" aria-label="Intertitle"><span>Inter</span><span>TITLE</span></a>
     <nav>
-      <a href="#how">How it works</a>
-      <a href="#edits">Edits</a>
-      <a href="#cli">Command line</a>
-      <a href="https://github.com/leecyrille/intertitle">GitHub</a>
+      <a href="#download">Download</a>
+      <a href="#what">What it does</a>
+      <a href="#how">How to use it</a>
+      <a href="#faq">Questions</a>
     </nav>
   </header>
 
   <div class="hero">
-    <div>
-      <h1>Skip scenes. Mute lines.<br>Drop in a title card.</h1>
-      <p class="lead">Intertitle edits the movies you already own without re-encoding them. Cut the scene, silence the line, put up a card that says what you missed. A 4K film renders in a couple of minutes with zero quality loss, subtitles and chapters intact.</p>
-      <div class="cta">
-        <a class="btn primary" href="https://github.com/leecyrille/intertitle/releases/latest">Download for Windows</a>
-        <a class="btn" href="https://github.com/leecyrille/intertitle">Source on GitHub</a>
-      </div>
-      <p class="req">Free and open source (MIT). Needs <a href="https://www.gyan.dev/ffmpeg/builds/">ffmpeg</a> and <a href="https://mkvtoolnix.download/">MKVToolNix</a> installed. macOS and Linux builds coming later.</p>
+    <h1>Skip a scene. Mute a line.<br>Show a card that says what happened.</h1>
+    <p class="lead">Intertitle edits the movies you already own. Cut the part you'd rather not watch, silence the line, and put up a card so the story still makes sense. Nothing is re-encoded, so it takes a couple of minutes even for a 4K film, and the picture is exactly as good as it was.</p>
+    <div class="demo">
+      <video controls autoplay muted loop playsinline poster="demo-poster.jpg" preload="metadata">
+        <source src="demo.mp4" type="video/mp4">
+      </video>
     </div>
-    <div class="demo" aria-hidden="true">
-      <div class="screen">He just woke up.<br><br>He can't remember anything<br>from the last long while.</div>
-      <div class="bar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><b class="r"></b><b class="c"></b><b class="m"></b><b class="t"></b><b class="ph"></b></div>
+    <p class="caption">Here is <i>Big Buck Bunny</i> with one scene replaced. The three rodents are about to torment a butterfly; instead a card explains it and the film carries on. Making this took five seconds. Only the eight-second card was encoded. Turn the sound on to hear it play through the cut.</p>
+    <div>
+      <span class="fact">Whole app <b>under 2&nbsp;MB</b></span>
+      <span class="fact"><b>No re-encoding</b>, no quality loss</span>
+      <span class="fact">4K film edited in <b>minutes</b></span>
+      <span class="fact">Subtitles and chapters <b>kept</b></span>
+      <span class="fact"><b>Free</b> and open source</span>
     </div>
   </div>
 
-  <section id="edits">
-    <h2>Four kinds of edit</h2>
+  <section id="download">
+    <h2>Download</h2>
+    <p class="lead">One small file. Install it, open a movie, and you're editing.</p>
+    <div class="dl">
+      <a class="dlbtn" href="dl/Intertitle-Setup-Windows.exe" download><b>Windows</b><span>Intertitle-Setup-Windows.exe · 1.3 MB · Windows 10 and 11</span></a>
+      <a class="dlbtn alt" href="dl/Intertitle-macOS.dmg" download><b>macOS</b><span>Intertitle-macOS.dmg · 3.5 MB · Apple silicon and Intel</span></a>
+      <a class="dlbtn alt" href="dl/Intertitle-Linux.deb" download><b>Linux</b><span>Intertitle-Linux.deb · 2.2 MB · Ubuntu, Debian, Mint</span></a>
+    </div>
+    <p class="note">The macOS and Linux builds come from the same code but have not been tested on real machines yet. If something is off, <a href="https://github.com/leecyrille/intertitle/issues">please say so</a>. Windows may warn that the installer is from an unknown publisher: it is not signed yet, choose "More info" then "Run anyway". On a Mac, right-click the app and choose Open the first time.</p>
+    <h3>You also need two free helper programs</h3>
+    <p class="note">Intertitle does the thinking; two well-known open source tools do the heavy lifting. Install them once and Intertitle finds them by itself.</p>
+    <div class="grid" style="margin-top:8px">
+      <div class="tile"><h3>ffmpeg</h3><p>Reads every video format and draws the cards.</p><p><a href="https://www.gyan.dev/ffmpeg/builds/">Windows download</a> · Mac: <code>brew install ffmpeg</code> · Linux: <code>sudo apt install ffmpeg</code></p><p class="note">On Windows, the quickest way is to open a terminal and run <code>winget install Gyan.FFmpeg</code>.</p></div>
+      <div class="tile"><h3>MKVToolNix</h3><p>Cuts the movie at clean points and joins it back together without touching the picture.</p><p><a href="https://mkvtoolnix.download/downloads.html">Download for Windows, Mac and Linux</a></p><p class="note">On Windows you can also run <code>winget install MoritzBunkus.MKVToolNix</code>.</p></div>
+    </div>
+    <p class="note">If Intertitle can't find them it says so at the top of the window, with a button to point at the programs. Prefer the command line? There is a tiny <a href="dl/intertitle-cli-windows.exe">Windows</a>, <a href="dl/intertitle-cli-macos">Mac</a> and <a href="dl/intertitle-cli-linux">Linux</a> tool that does the same job from a terminal.</p>
+  </section>
+
+  <section id="what">
+    <h2>What it does</h2>
+    <p class="lead">You mark a stretch of the movie and choose one of four things to do with it.</p>
     <div class="grid">
-      <div class="tile"><span class="tag" style="background:var(--remove)">Remove</span><h3>Cut it out</h3><p>The range disappears. The movie gets shorter and everything after it shifts up, subtitles included.</p></div>
-      <div class="tile"><span class="tag" style="background:var(--replace)">Replace with card</span><h3>Say what happened</h3><p>The range is cut and a text card takes its place, for ten seconds, or exactly as long as the original if you prefer.</p></div>
-      <div class="tile"><span class="tag" style="background:var(--text)">Text over video</span><h3>Keep the sound</h3><p>The picture becomes a card while the dialogue and music carry on. Nothing changes length.</p></div>
-      <div class="tile"><span class="tag" style="background:var(--mute)">Mute</span><h3>Silence a line</h3><p>The picture stays, the audio goes quiet for exactly the range you mark. Real silence in the same codec, so the rest of the track is untouched.</p></div>
+      <div class="tile"><span class="tag" style="background:var(--remove)">Cut it out</span><h3>The part is gone</h3><p>The movie skips straight over it. Everything after moves up, subtitles included.</p></div>
+      <div class="tile"><span class="tag" style="background:var(--replace)">Cut it out, show a card</span><h3>Say what happened</h3><p>The part is gone and a card with your words takes its place, for a few seconds or exactly as long as the original.</p></div>
+      <div class="tile"><span class="tag" style="background:var(--text)">Show a card, keep the sound</span><h3>Hide the picture only</h3><p>The picture becomes a card while the dialogue and music carry on. Nothing changes length.</p></div>
+      <div class="tile"><span class="tag" style="background:var(--mute)">Mute the sound</span><h3>Silence a line</h3><p>The picture stays, the sound goes quiet for exactly the stretch you marked.</p></div>
+    </div>
+    <div class="ba">
+      <div><img src="before.jpg" alt="The original scene: the rodents with the butterfly"><div class="lbl">Original, 3:06 to 3:52: the rodents and the butterfly</div></div>
+      <div class="arrow">→</div>
+      <div><img src="after-card.jpg" alt="The card that replaces the scene"><div class="lbl">Edited: an eight-second card, then the film continues</div></div>
     </div>
   </section>
 
   <section id="how">
-    <h2>How it works</h2>
+    <h2>How to use it</h2>
     <ol class="steps">
-      <li><b>Open a movie.</b> MKV, MP4, MOV, WebM, AVI, TS. Thumbnails fill the scrub bar in the background.</li>
-      <li><b>Scrub and mark.</b> Click, drag, step by frame. <kbd>I</kbd> sets a start, <kbd>O</kbd> an end. Play a low-res preview with <kbd>Space</kbd>, show subtitles with <kbd>C</kbd>.</li>
-      <li><b>Pick the action.</b> Every edit sits in a list with aligned columns: type, start, end, length, card text, card length. Whatever is highlighted is what the marks change.</li>
-      <li><b>Render.</b> Only the cards are encoded. The rest is split at keyframes and copied byte for byte, then joined back by mkvmerge.</li>
+      <li><b>Open a movie.</b> MKV, MP4, MOV, AVI, WebM, TS, most things. If you saved edits for this movie before, they load by themselves.</li>
+      <li><b>Find the spot.</b> Drag along the timeline and the picture follows. Arrow keys step one frame, the mouse wheel over the picture does too. Subtitles show on the preview so you know where you are.</li>
+      <li><b>Mark it.</b> Click <b>Start here</b>, move to the end, click <b>End here</b>. Then pick what to do with it in the list and type what the card should say.</li>
+      <li><b>Make the edited movie.</b> A new file appears next to the original. The original is never changed.</li>
     </ol>
-    <p style="margin-top:22px;color:var(--ink-dim)">Every button shows its keyboard shortcut when you hover it. Edit lists save as a small CSV next to the movie and load again automatically. Works on 4K HEVC, Dolby Vision, Atmos, TrueHD, DTS, 35 subtitle tracks, the lot.</p>
+    <div class="shots">
+      <div class="shot"><img src="img/app-main.png" alt="Intertitle with Big Buck Bunny open and three edits in the list"><div class="cap"><b>The whole app.</b> The picture and timeline above, your edits below. Coloured blocks on the timeline show where the edits are. Every column is always there; a dash means it doesn't apply to that kind of edit. Hover any button to see what it does and its keyboard shortcut.</div></div>
+      <div class="shot"><img src="img/app-render.png" alt="The Make the edited movie dialog"><div class="cap"><b>Making the movie.</b> Before it starts you see how long the result will be and how little has to be encoded. Cuts land on the nearest clean cut point in the video, usually within a second of where you clicked, and the exact times are shown when it finishes.</div></div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <h2>Questions</h2>
+    <details open><summary>Does it lower the quality?</summary><p>No. The movie is cut at clean points and copied byte for byte. The only things encoded are the cards themselves, a few seconds of black with text on it. A 23&nbsp;GB 4K film went through with 30 seconds of cards and took about four minutes, most of it copying.</p></details>
+    <details><summary>Why is the app so small?</summary><p>It is under 2&nbsp;MB because it doesn't carry its own video engine. It drives ffmpeg and MKVToolNix, which you install once. Both are free, open source, and used by most of the video tools you've heard of.</p></details>
+    <details><summary>What happens to subtitles?</summary><p>Text subtitles (the usual kind) are kept and retimed so they still line up after a cut. Picture-based subtitles from Blu-rays are left out if the running time changes, and Intertitle tells you before it starts. Chapters are kept too.</p></details>
+    <details><summary>Why did my cut land a second away from where I clicked?</summary><p>Video is stored in groups of frames that only start on a "keyframe", so a cut without re-encoding has to start on one. Intertitle picks the nearest, which is normally within a second. If a scene's edge matters to the frame, mark it a little wider.</p></details>
+    <details><summary>Can I save my edits and reuse them?</summary><p>Yes. <b>Save edit list</b> writes a small file next to the movie. Open the same movie later and the edits come back. The file is plain text, so you can share it with someone who has the same movie.</p></details>
+    <details><summary>Which files can I open?</summary><p>MKV, MP4, MOV, WebM, AVI, TS and M2TS, in any resolution up to 4K and beyond, with any audio (Dolby Atmos, TrueHD, DTS, AAC, and so on) and any number of subtitle tracks. The edited movie is saved as MKV, which keeps everything, or MP4 if you prefer.</p></details>
+    <details><summary>Is the original changed?</summary><p>Never. Intertitle only reads it and writes a new file called "your movie (edited)".</p></details>
+    <details><summary>Is it really free?</summary><p>Yes, and open source under the MIT license. If it saved you an evening, there is a tip jar at the bottom of this page.</p></details>
   </section>
 
   <section id="cli">
-    <h2>Also a command-line tool</h2>
-    <p style="color:var(--ink-dim)">The same engine ships as <code>intertitle-cli</code> for scripts and headless boxes. Edit lists are plain CSV you can write by hand.</p>
+    <details><summary>For the technically minded: command line and the edit-list format</summary>
+      <p>The same engine ships as <code>intertitle-cli</code>. Edit lists are plain CSV.</p>
 <pre><code>intertitle-cli "Movie.mkv" --edits "Movie.csv"
 intertitle-cli "Movie.mkv" --remove 1:02:15-1:03:00 --mute 10:00-10:05 \
                --card 20:00-21:00 "Rocky saved him in the lab." --out "Movie (edited).mkv"</code></pre>
 <pre><code>start,end,action,text,card_seconds,enabled
-00:00:55.000,00:03:36.000,replace,"He just woke up. He can't remember anything from the last long while.",10,yes
-01:54:58.000,01:55:35.000,replace,Rocky saved him in the lab.,match,yes
-02:12:41.000,02:13:39.000,text-keep-audio,They put him to sleep and made him go.,match,yes
-00:40:00.000,00:40:05.000,mute,-,-,yes</code></pre>
+00:03:06.000,00:03:52.000,replace,"The three rodents torment a butterfly. Bunny has seen enough.",8,yes
+00:04:20.000,00:04:30.000,mute,-,-,yes
+00:06:55.000,00:07:05.000,text-keep-audio,Bunny springs his trap.,match,yes</code></pre>
+      <p>Source code, bug reports and older versions live on <a href="https://github.com/leecyrille/intertitle">GitHub</a>.</p>
+    </details>
   </section>
 
   <section id="support">
     <h2>Support the project</h2>
-    <p style="color:var(--ink-dim)">Intertitle is free and always will be. If it saved you an evening, a tip keeps the lights on.</p>
+    <p class="lead">Intertitle is free and always will be. If it saved you an evening, a tip keeps the lights on.</p>
     <div class="support">
       <a class="tipcard" href="https://pactotech.com/products/intertitle-tip-jar" target="_blank" rel="noopener">&#9749; Enjoying this free tool? <b>Leave a tip</b></a>
       <a class="btn" href="https://github.com/sponsors/leecyrille" target="_blank" rel="noopener">&hearts; GitHub Sponsors</a>
-      <a class="btn" href="https://github.com/leecyrille/intertitle" target="_blank" rel="noopener">&#9733; Star on GitHub</a>
     </div>
   </section>
 
   <footer>
-    <span>Intertitle is MIT licensed · by <a href="https://pactotech.com/" target="_blank" rel="noopener">Pacto Tech</a> · <a href="https://github.com/leecyrille/intertitle/issues">Report a problem</a></span>
+    <span>Intertitle is MIT licensed · by <a href="https://pactotech.com/" target="_blank" rel="noopener">Pacto Tech</a> · <a href="https://github.com/leecyrille/intertitle">Source on GitHub</a> · <a href="https://github.com/leecyrille/intertitle/issues">Report a problem</a></span><br>
+    <span>The demo uses <a href="https://peach.blender.org/">Big Buck Bunny</a> © 2008 Blender Foundation, <a href="https://creativecommons.org/licenses/by/3.0/">CC BY 3.0</a>.</span>
   </footer>
 </div>
 </body>

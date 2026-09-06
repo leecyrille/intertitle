@@ -10,10 +10,12 @@
 </p>
 
 <p align="center">
-  <a href="https://intertitle.pages.dev">Website</a> ·
-  <a href="https://github.com/leecyrille/intertitle/releases">Downloads</a> ·
+  <a href="https://intertitle.pages.dev"><b>Download for Windows, macOS or Linux</b></a> ·
+  <a href="https://intertitle.pages.dev">Website with a demo</a> ·
   <a href="https://pactotech.com/products/intertitle-tip-jar">Leave a tip</a>
 </p>
+
+<p align="center"><img src="site/img/app-main.png" width="820" alt="Intertitle with Big Buck Bunny open and three edits"></p>
 
 ---
 
@@ -44,17 +46,18 @@ at keyframes and stream-copied, so there is no quality loss and no waiting hours
 
 ## Using the app
 
-1. **Open a movie.** Thumbnails fill the scrub bar in the background.
-2. **Scrub** to the spot you care about. Click the bar, drag, use the arrow keys (one frame), Shift+arrows
-   (one second), Ctrl+arrows (ten seconds). Space plays a low-resolution preview with sound. Press `C`
-   to show subtitles on the preview and pick the track in the dropdown.
-3. **Mark it.** Press `I` to set the start and `O` to set the end. With nothing selected that creates a new
-   edit; with an edit highlighted in the list, the buttons change *that* edit. `N` adds a new edit at the
-   playhead.
+1. **Open a movie.** Edits you saved for it before load automatically.
+2. **Scrub** to the spot you care about. Drag the timeline and the picture follows (keyframe grabs, cached,
+   so it stays quick even on 4K), use the arrow keys or the mouse wheel over the picture for single
+   frames, Shift+arrows for a second, Ctrl+arrows for ten. Space plays a low-resolution preview with sound.
+   Subtitles show on the preview by default; pick the subtitle and audio track in the dropdowns.
+3. **Mark it.** Press `I` (Start here) and `O` (End here). With nothing highlighted that creates a new
+   edit; with an edit highlighted in the list, the buttons change *that* edit. `N` or **Add another edit**
+   adds one at the playhead.
 4. **Choose the action** in the list and type the card text if there is one. Every column is always shown;
    a dash means "does not apply".
-5. **Render.** The dialog tells you how long the result will be, how many seconds have to be encoded
-   (usually 10 or 20), and where the cuts actually landed.
+5. **Make the edited movie.** The dialog tells you how long the result will be, how many seconds have to be
+   encoded (usually 10 or 20), and where the cuts actually landed. The whole app is under 2 MB.
 
 Hover any button to see what it does and its keyboard shortcut. Press `?` for the full list.
 
@@ -126,7 +129,9 @@ The code is split in two: `src-tauri/core` is a plain Rust crate with everything
 mkvmerge (probing, keyframes, timeline mapping, subtitle retiming, card encoding, the pipeline and the
 CLI), and `src-tauri` is the thin Tauri shell around it. The React UI lives in `src/`.
 
-macOS and Linux builds should work with the same commands; they are not tested yet.
+macOS (universal) and Linux (.deb) builds are produced by CI alongside Windows; they have not been tested
+on real machines yet. `scripts/publish-site.sh vX.Y.Z` copies a release's installers into `site/dl` and
+deploys the website.
 
 ## Support the project
 
