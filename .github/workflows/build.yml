@@ -25,6 +25,8 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml -p intertitle-core
       - name: Build installer
         run: npx tauri build
+      - name: Build CLI
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml -p intertitle-core --bin intertitle-cli
       - name: Package CLI
         shell: pwsh
         run: Compress-Archive -Path src-tauri/target/release/intertitle-cli.exe -DestinationPath src-tauri/target/release/intertitle-cli-windows-x64.zip
