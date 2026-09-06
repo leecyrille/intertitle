@@ -22,7 +22,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: cargo test --manifest-path src-tauri/Cargo.toml -p intertitle-core
       - name: Build installer
         run: npx tauri build
       - name: Package CLI
