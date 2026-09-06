@@ -7,3 +7,4 @@ src-tauri/gen/schemas/
 Thumbs.db
 demo-src/
 public/demo/
+site/dl/
