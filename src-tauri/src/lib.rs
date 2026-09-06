@@ -5,7 +5,7 @@ use pipeline::{RenderRequest, RenderResult};
 use probe::MediaInfo;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tools::{ToolPaths, ToolStatus, Tools};
@@ -15,7 +15,6 @@ use tools::{ToolPaths, ToolStatus, Tools};
 pub struct Settings {
     pub tools: ToolPaths,
     pub card: CardStyle,
-    pub thumbnail_count: usize,
     pub preview_width: i64,
     pub csv_extension: String,
     pub output_suffix: String,
@@ -27,7 +26,6 @@ impl Default for Settings {
         Settings {
             tools: ToolPaths::default(),
             card: CardStyle::default(),
-            thumbnail_count: 120,
             preview_width: 1280,
             csv_extension: "csv".into(),
             output_suffix: " (edited)".into(),
@@ -39,7 +37,6 @@ impl Default for Settings {
 pub struct AppState {
     settings: Mutex<Settings>,
     settings_path: PathBuf,
-    thumb_generation: AtomicU64,
     render_cancel: Arc<AtomicBool>,
     render_pid: Arc<AtomicU32>,
     rendering: AtomicBool,
@@ -85,8 +82,6 @@ async fn tool_status(state: State<'_, AppState>) -> Result<ToolStatus, String> {
 #[tauri::command]
 async fn probe_media(state: State<'_, AppState>, path: String) -> Result<MediaInfo, String> {
     let tools = state.tools()?;
-    // any new file invalidates thumbnails in flight
-    state.thumb_generation.fetch_add(1, Ordering::SeqCst);
     probe::probe(&tools, Path::new(&path)).await
 }
 
@@ -106,39 +101,6 @@ async fn nearest_keyframe(state: State<'_, AppState>, path: String, time: f64, d
 async fn frame_at(state: State<'_, AppState>, path: String, time: f64, width: i64, accurate: bool) -> Result<String, String> {
     let tools = state.tools()?;
     preview::frame_jpeg(&tools, Path::new(&path), time, width, accurate).await
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ThumbEvent {
-    index: usize,
-    count: usize,
-    time: f64,
-    data: String,
-}
-
-#[tauri::command]
-async fn start_thumbnails(app: AppHandle, state: State<'_, AppState>, path: String, duration: f64, count: usize, width: i64) -> Result<(), String> {
-    let tools = state.tools()?;
-    let generation = state.thumb_generation.fetch_add(1, Ordering::SeqCst) + 1;
-    let count = count.clamp(10, 600);
-    tauri::async_runtime::spawn(async move {
-        let st = app.state::<AppState>();
-        for i in 0..count {
-            if st.thumb_generation.load(Ordering::SeqCst) != generation {
-                return;
-            }
-            let t = (i as f64 + 0.5) * duration / count as f64;
-            if let Ok(data) = preview::frame_jpeg(&tools, Path::new(&path), t, width, false).await {
-                if st.thumb_generation.load(Ordering::SeqCst) != generation {
-                    return;
-                }
-                let _ = app.emit("thumbnail", ThumbEvent { index: i, count, time: t, data });
-            }
-        }
-        let _ = app.emit("thumbnails-done", generation);
-    });
-    Ok(())
 }
 
 #[tauri::command]
@@ -237,7 +199,6 @@ pub fn run() {
             app.manage(AppState {
                 settings: Mutex::new(load_settings(&settings_path)),
                 settings_path,
-                thumb_generation: AtomicU64::new(0),
                 render_cancel: Arc::new(AtomicBool::new(false)),
                 render_pid: Arc::new(AtomicU32::new(0)),
                 rendering: AtomicBool::new(false),
@@ -252,7 +213,6 @@ pub fn run() {
             keyframes_near,
             nearest_keyframe,
             frame_at,
-            start_thumbnails,
             preview_clip,
             subtitle_text,
             render,

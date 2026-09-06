@@ -6,3 +6,4 @@ src-tauri/gen/schemas/
 .DS_Store
 Thumbs.db
 demo-src/
+public/demo/

@@ -346,7 +346,7 @@ input[type="checkbox"] {
 
 .scrub {
   position: relative;
-  height: 64px;
+  height: 46px;
   border-radius: 6px;
   overflow: visible;
   cursor: crosshair;
@@ -438,11 +438,35 @@ input[type="checkbox"] {
   pointer-events: none;
   z-index: 30;
 }
-.hover-pop img {
-  display: block;
-  width: 160px;
-  border-radius: 3px;
-  margin-bottom: 2px;
+.ticks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 10%);
+}
+.ticks span {
+  position: absolute;
+  bottom: 3px;
+  transform: translateX(-50%);
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  color: var(--dim);
+}
+.ticks span:first-child {
+  transform: none;
+  left: 4px !important;
+}
+.ticks span:last-child {
+  transform: translateX(-100%);
+  left: calc(100% - 4px) !important;
+}
+.track-select {
+  max-width: 230px;
+}
+.editlist-foot {
+  padding: 8px;
+  position: sticky;
+  left: 0;
 }
 
 .controls {
@@ -460,9 +484,6 @@ input[type="checkbox"] {
   width: 118px;
   font-family: Consolas, monospace;
   text-align: center;
-}
-.sub-select {
-  max-width: 220px;
 }
 
 /* ---------- edits ---------- */
@@ -535,7 +556,7 @@ input[type="checkbox"] {
   text-align: center;
 }
 .c-type {
-  width: 170px;
+  width: 230px;
 }
 .c-time {
   width: 128px;

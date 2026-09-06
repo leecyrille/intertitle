@@ -14,9 +14,11 @@ fn b64(bytes: &[u8]) -> String {
 pub async fn frame_jpeg(tools: &Tools, path: &Path, time: f64, width: i64, accurate: bool) -> Result<String, String> {
     let t = format!("{:.3}", time.max(0.0));
     let vf = format!("scale={}:-2:flags=fast_bilinear,format=yuv420p", width.max(64));
-    let mut args: Vec<String> = vec!["-hide_banner".into(), "-loglevel".into(), "error".into()];
+    let mut args: Vec<String> = vec!["-hide_banner".into(), "-loglevel".into(), "error".into(), "-threads".into(), "8".into()];
     if !accurate {
-        args.push("-noaccurate_seek".into());
+        // land on the keyframe and decode nothing else: with B-frames the decoder would
+        // otherwise have to decode several more frames before it releases the keyframe
+        args.extend(["-noaccurate_seek".into(), "-skip_frame".into(), "nokey".into()]);
     }
     args.extend([
         "-ss".into(),
@@ -35,6 +37,8 @@ pub async fn frame_jpeg(tools: &Tools, path: &Path, time: f64, width: i64, accur
         "mjpeg".into(),
         "-q:v".into(),
         "4".into(),
+        "-strict".into(),
+        "unofficial".into(), // limited-range YUV into MJPEG is fine for a preview
         "-".into(),
     ]);
     let bytes = run_capture_bytes(&tools.ffmpeg, &args).await?;

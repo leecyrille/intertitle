@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { askUser, isTauri, openFile, openUrl, saveFile, showMessage } from "./dialogs";
-import { api, dirOf, joinPath, onThumbnail, stemOf, type ThumbEvent } from "./api";
+import { api, dirOf, joinPath, stemOf } from "./api";
 import { csvToEdits, editsToCsv } from "./csv";
 import { cueAt, parseAss, parseSrt, type Cue } from "./subtitles";
 import { fmtBytes, fmtTime, fps as fpsOf, KIND_ORDER, newId, outputLength, type Edit, type EditKind, type MediaInfo, type Settings, type ToolStatus } from "./types";
@@ -14,6 +14,8 @@ import SettingsDialog from "./components/SettingsDialog";
 import { LINKS } from "./links";
 
 const VIDEO_EXT = ["mkv", "mp4", "m4v", "mov", "avi", "webm", "ts", "m2ts", "mts", "mpg", "mpeg", "vob", "wmv", "flv", "ogv", "3gp"];
+const SCRUB_WIDTH = 720; // px; keyframe grabs while dragging are scaled to this and cached
+const SCRUB_CACHE_MAX = 600;
 
 type Dialog = "none" | "render" | "settings" | "help";
 
@@ -28,15 +30,24 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   const [frame, setFrame] = useState<string | null>(null);
   const [loadingFrame, setLoadingFrame] = useState(false);
-  const [thumbs, setThumbs] = useState<(ThumbEvent | undefined)[]>([]);
   const [subTrack, setSubTrack] = useState<number | null>(null);
+  const [audioIndex, setAudioIndex] = useState<number | null>(null);
   const [cues, setCues] = useState<Cue[]>([]);
   const [showSubs, setShowSubs] = useState(true);
   const [dialog, setDialog] = useState<Dialog>("none");
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const frameReq = useRef(0);
   const fps = fpsOf(media);
+
+  // scrub machinery: latest wanted time, at most two grabs in flight, results cached per half-second
+  const wantRef = useRef<number | null>(null);
+  const inFlight = useRef(0);
+  const scrubbingRef = useRef(false);
+  const exactReq = useRef(0);
+  const cache = useRef<Map<string, string>>(new Map());
+  const mediaRef = useRef<MediaInfo | null>(null);
+  mediaRef.current = media;
+  scrubbingRef.current = scrubbing;
 
   // ---------- startup ----------
   useEffect(() => {
@@ -44,17 +55,24 @@ export default function App() {
     api.toolStatus().then(setTools).catch((e) => console.error(e));
   }, []);
 
+  // Browser demo mode (screenshots): ?demo opens the mock movie; &t=SECONDS, &sel=N, &dialog=render|help|settings
+  const demoDone = useRef(false);
   useEffect(() => {
-    let un: (() => void) | undefined;
-    onThumbnail((ev) => {
-      setThumbs((prev) => {
-        const next = prev.length === ev.count ? prev.slice() : new Array<ThumbEvent | undefined>(ev.count);
-        next[ev.index] = ev;
-        return next;
-      });
-    }).then((u) => (un = u));
-    return () => un?.();
-  }, []);
+    if (isTauri || !settings || demoDone.current) return;
+    const q = new URLSearchParams(window.location.search);
+    if (!q.has("demo")) return;
+    demoDone.current = true;
+    (async () => {
+      await openMovie("C:/Movies/Big Buck Bunny (2008).mkv");
+      const tt = Number(q.get("t"));
+      if (tt > 0) setT(tt);
+      const d = q.get("dialog") as Dialog | null;
+      if (d) setTimeout(() => setDialog(d), 400);
+      const sel = Number(q.get("sel"));
+      if (sel > 0) setTimeout(() => setEdits((list) => (setSelectedId(list[sel - 1]?.id ?? null), list)), 300);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings]);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -79,12 +97,13 @@ export default function App() {
         setSelectedId(null);
         setT(0);
         setFrame(null);
-        setThumbs([]);
         setCues([]);
+        cache.current.clear();
         const firstText = info.subtitles.find((s) => s.text && s.default) ?? info.subtitles.find((s) => s.text && (s.language ?? "").startsWith("en")) ?? info.subtitles.find((s) => s.text);
         setSubTrack(firstText ? firstText.index : null);
+        setShowSubs(true);
+        setAudioIndex(info.audio.find((a) => a.default)?.index ?? info.audio[0]?.index ?? null);
         if (isTauri) getCurrentWindow().setTitle(`${info.fileName} — Intertitle`).catch(() => {});
-        api.startThumbnails(info.path, info.duration, settings.thumbnailCount, 240).catch((e) => console.error(e));
         // auto-load an edit list saved next to the movie
         const csvPath = joinPath(dirOf(info.path), `${stemOf(info.path)}.${settings.csvExtension || "csv"}`);
         if (await api.pathExists(csvPath)) {
@@ -93,7 +112,7 @@ export default function App() {
             const { edits: loaded, errors } = csvToEdits(text, settings.defaultCardSeconds);
             if (loaded.length) {
               setEdits(loaded);
-              showToast(`Loaded ${loaded.length} edit${loaded.length === 1 ? "" : "s"} from ${stemOf(csvPath)}.${settings.csvExtension || "csv"}${errors.length ? ` (${errors.length} lines skipped)` : ""}`);
+              showToast(`Loaded ${loaded.length} saved edit${loaded.length === 1 ? "" : "s"} for this movie${errors.length ? ` (${errors.length} lines skipped)` : ""}`);
             }
           } catch (e) {
             console.error(e);
@@ -108,30 +127,58 @@ export default function App() {
     [settings, showToast]
   );
 
-  // ---------- frame fetching ----------
+  // ---------- frames ----------
+  // While dragging: keyframe grabs, at most two in flight, always for the newest position.
+  const pump = useCallback(() => {
+    const m = mediaRef.current;
+    if (!m) return;
+    while (inFlight.current < 2 && wantRef.current !== null) {
+      const at = wantRef.current;
+      wantRef.current = null;
+      const key = `${m.path}#${Math.round(at * 2)}`;
+      const hit = cache.current.get(key);
+      if (hit) {
+        setFrame(hit);
+        continue;
+      }
+      inFlight.current++;
+      api
+        .frameAt(m.path, at, SCRUB_WIDTH, false)
+        .then((data) => {
+          if (cache.current.size >= SCRUB_CACHE_MAX) cache.current.delete(cache.current.keys().next().value as string);
+          cache.current.set(key, data);
+          // only paint while still dragging, or if nothing newer is waiting
+          if (scrubbingRef.current && wantRef.current === null) setFrame(data);
+          else if (scrubbingRef.current) setFrame(data);
+        })
+        .catch((e) => console.error(e))
+        .finally(() => {
+          inFlight.current--;
+          pump();
+        });
+    }
+  }, []);
+
   useEffect(() => {
     if (!media || !settings || playing) return;
-    const id = ++frameReq.current;
     if (scrubbing) {
-      // instant feedback from the thumbnail strip
-      if (thumbs.length) {
-        const i = Math.min(thumbs.length - 1, Math.floor((t / media.duration) * thumbs.length));
-        const th = thumbs[i] ?? thumbs[i - 1] ?? thumbs[i + 1];
-        if (th) setFrame(th.data);
-      }
+      wantRef.current = t;
+      pump();
+      return;
     }
-    const delay = scrubbing ? 220 : 40;
+    // settled: the exact frame at full preview size
+    const id = ++exactReq.current;
     setLoadingFrame(true);
     const timer = window.setTimeout(async () => {
       try {
         const data = await api.frameAt(media.path, t, settings.previewWidth, true);
-        if (id === frameReq.current) setFrame(data);
+        if (id === exactReq.current) setFrame(data);
       } catch (e) {
         console.error(e);
       } finally {
-        if (id === frameReq.current) setLoadingFrame(false);
+        if (id === exactReq.current) setLoadingFrame(false);
       }
-    }, delay);
+    }, 30);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t, media, playing, scrubbing]);
@@ -196,51 +243,52 @@ export default function App() {
     if (!media || !settings) return;
     if (selected) {
       updateEdit(selected.id, { start: t, end: t >= selected.end ? Math.min(t + settings.defaultCardSeconds, media.duration) : selected.end });
-      showToast(`Start set to ${fmtTime(t)}`);
+      showToast(`Start moved to ${fmtTime(t)}`);
     } else {
       addEdit(t, Math.min(t + settings.defaultCardSeconds, media.duration));
-      showToast("New edit started. Move to where it should end and press O.");
+      showToast("New edit started here. Move to where it should end and press O (or click End here).");
     }
   }, [media, settings, selected, t, updateEdit, addEdit, showToast]);
   const setEndHere = useCallback(() => {
     if (!media || !settings) return;
     if (selected) {
       updateEdit(selected.id, { end: t, start: t <= selected.start ? Math.max(t - settings.defaultCardSeconds, 0) : selected.start });
-      showToast(`End set to ${fmtTime(t)}`);
+      showToast(`End moved to ${fmtTime(t)}`);
     } else {
       addEdit(Math.max(0, t - settings.defaultCardSeconds), t);
-      showToast("New edit ending here. Press I where it should start.");
+      showToast("New edit ending here. Press I (or click Start here) where it should begin.");
     }
   }, [media, settings, selected, t, updateEdit, addEdit, showToast]);
   const newEditHere = useCallback(() => {
     if (!media || !settings) return;
     addEdit(t, Math.min(t + settings.defaultCardSeconds, media.duration));
-  }, [media, settings, t, addEdit]);
+    showToast("New edit added at the playhead. Adjust its start and end, then pick what to do with it.");
+  }, [media, settings, t, addEdit, showToast]);
 
-  // ---------- CSV ----------
-  const exportCsv = useCallback(async () => {
+  // ---------- edit lists ----------
+  const saveList = useCallback(async () => {
     if (!media || !settings) return;
     const ext = settings.csvExtension || "csv";
     const path = await saveFile({ defaultPath: joinPath(dirOf(media.path), `${stemOf(media.path)}.${ext}`), filters: [{ name: "Edit list", extensions: [ext] }] });
     if (!path) return;
     await api.writeTextFile(path, editsToCsv(edits));
-    showToast(`Saved ${edits.length} edits`);
+    showToast(`Saved ${edits.length} edit${edits.length === 1 ? "" : "s"}. They load again automatically when you open this movie.`);
   }, [media, settings, edits, showToast]);
-  const importCsv = useCallback(async () => {
+  const loadList = useCallback(async () => {
     if (!media || !settings) return;
     const ext = settings.csvExtension || "csv";
     const path = await openFile({ defaultPath: dirOf(media.path), filters: [{ name: "Edit list", extensions: [ext, "csv", "txt"] }, { name: "All files", extensions: ["*"] }] });
     if (!path) return;
     const { edits: loaded, errors } = csvToEdits(await api.readTextFile(path), settings.defaultCardSeconds);
     if (errors.length && loaded.length === 0) {
-      await showMessage(errors.join("\n"), "Nothing could be imported", "error");
+      await showMessage(errors.join("\n"), "Nothing could be loaded", "error");
       return;
     }
     let replace = true;
-    if (edits.length) replace = await askUser(`Replace the current ${edits.length} edits with the ${loaded.length} imported ones? Choose No to add them instead.`, "Import edits");
+    if (edits.length) replace = await askUser(`Replace the current ${edits.length} edits with the ${loaded.length} loaded ones? Choose No to add them instead.`, "Load edit list");
     setEdits(replace ? loaded : sortEdits([...edits, ...loaded]));
     setSelectedId(null);
-    showToast(`Imported ${loaded.length} edits${errors.length ? `, ${errors.length} lines skipped` : ""}`);
+    showToast(`Loaded ${loaded.length} edits${errors.length ? `, ${errors.length} lines skipped` : ""}`);
   }, [media, settings, edits, showToast]);
 
   // ---------- keyboard ----------
@@ -257,13 +305,13 @@ export default function App() {
         if (k === "o") {
           ev.preventDefault();
           openMovie();
-        } else if (k === "e" && media) {
+        } else if (k === "s" && media) {
           ev.preventDefault();
-          exportCsv();
-        } else if (k === "i" && media) {
+          saveList();
+        } else if (k === "l" && media) {
           ev.preventDefault();
-          importCsv();
-        } else if (k === "r" && media) {
+          loadList();
+        } else if (k === "enter" && media) {
           ev.preventDefault();
           setDialog("render");
         } else if (media && (ev.key === "ArrowLeft" || ev.key === "ArrowRight") && !typing) {
@@ -352,7 +400,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [dialog, media, t, fps, selected, selectedId, edits, openMovie, exportCsv, importCsv, setStartHere, setEndHere, newEditHere, deleteEdit, updateEdit]);
+  }, [dialog, media, t, fps, selected, selectedId, edits, openMovie, saveList, loadList, setStartHere, setEndHere, newEditHere, deleteEdit, updateEdit]);
 
   const onSeek = useCallback((v: number, isScrub: boolean) => {
     setScrubbing(isScrub);
@@ -366,7 +414,6 @@ export default function App() {
         .map((s) => ({ index: s.index, label: `${s.language ?? "und"}${s.title ? ` · ${s.title}` : ""} (${s.codec})` })),
     [media]
   );
-  const audioIndex = media?.audio.find((a) => a.default)?.index ?? media?.audio[0]?.index ?? null;
   const enabledCount = edits.filter((e) => e.enabled).length;
 
   if (!settings) return <div className="loading">Starting…</div>;
@@ -378,46 +425,46 @@ export default function App() {
           <span className="logo">Inter</span>
           <span className="logo2">TITLE</span>
         </div>
-        <Btn onClick={() => openMovie()} primary tip="Open a movie file" shortcut="Ctrl+O">
-          Open movie…
+        <Btn onClick={() => openMovie()} primary={!media} tip="Pick a movie file to edit" shortcut="Ctrl+O">
+          Open a movie…
         </Btn>
         {media && (
           <div className="file-info" title={media.path}>
             <b>{media.fileName}</b>
             <span className="dim">
               {media.video ? ` ${media.video.width}×${media.video.height} ${media.video.codec}` : ""} · {fmtTime(media.duration, false)} · {fmtBytes(media.size)} · {media.audio.length} audio ·{" "}
-              {media.subtitles.length} subs
+              {media.subtitles.length} subtitle{media.subtitles.length === 1 ? "" : "s"}
             </span>
           </div>
         )}
         <div className="spacer" />
-        <Btn onClick={importCsv} disabled={!media} tip="Import an edit list" shortcut="Ctrl+I">
-          Import
+        <Btn onClick={loadList} disabled={!media} tip="Load a list of edits you saved earlier" shortcut="Ctrl+L">
+          Load edit list…
         </Btn>
-        <Btn onClick={exportCsv} disabled={!media || edits.length === 0} tip="Export the edit list as CSV" shortcut="Ctrl+E">
-          Export
+        <Btn onClick={saveList} disabled={!media || edits.length === 0} tip="Save this list of edits next to the movie" shortcut="Ctrl+S">
+          Save edit list…
         </Btn>
-        <Btn onClick={() => setDialog("render")} disabled={!media || enabledCount === 0} primary tip="Write the edited movie" shortcut="Ctrl+R">
-          Render…
+        <Btn onClick={() => setDialog("render")} disabled={!media || enabledCount === 0} primary tip="Write a new movie file with these edits applied" shortcut="Ctrl+Enter">
+          Make the edited movie…
         </Btn>
-        <Btn onClick={() => setDialog("settings")} tip="Tools, card style, file options">
-          ⚙
+        <Btn onClick={() => setDialog("settings")} tip="Where ffmpeg and MKVToolNix are, how cards look">
+          Settings
         </Btn>
         <Btn onClick={() => setDialog("help")} tip="How it works and keyboard shortcuts" shortcut="?">
-          ?
+          Help
         </Btn>
         <Btn onClick={() => openUrl(LINKS.tipJar)} tip="Intertitle is free. Tips keep it going.">
-          ☕
+          ☕ Tip jar
         </Btn>
       </header>
 
       {!tools?.mkvmerge || !tools?.ffmpeg ? (
         <div className="banner">
-          {!tools?.ffmpeg && <span>ffmpeg not found. </span>}
-          {!tools?.mkvmerge && <span>mkvmerge (MKVToolNix) not found. </span>}
-          Rendering needs both.{" "}
+          {!tools?.ffmpeg && <span>ffmpeg was not found. </span>}
+          {!tools?.mkvmerge && <span>MKVToolNix was not found. </span>}
+          Intertitle needs both to make the edited movie.{" "}
           <button className="link" onClick={() => setDialog("settings")}>
-            Set their location
+            Tell Intertitle where they are
           </button>{" "}
           or install them:{" "}
           <button className="link" onClick={() => openUrl("https://www.gyan.dev/ffmpeg/builds/")}>
@@ -439,7 +486,6 @@ export default function App() {
             t={t}
             onSeek={onSeek}
             frame={frame}
-            thumbs={thumbs}
             edits={edits}
             selectedId={selectedId}
             onSelect={setSelectedId}
@@ -449,6 +495,7 @@ export default function App() {
             showSubs={showSubs}
             setShowSubs={setShowSubs}
             audioIndex={audioIndex}
+            setAudioIndex={setAudioIndex}
             onSetStart={setStartHere}
             onSetEnd={setEndHere}
             onNewEdit={newEditHere}
@@ -459,13 +506,13 @@ export default function App() {
           />
           <section className="edits">
             <div className="edits-head">
-              <h2>Edits</h2>
+              <h2>Your edits</h2>
               <span className="dim">
-                {selected ? "Set start / Set end change the highlighted edit." : "Nothing selected: Set start begins a new edit."} Click a row to select it.
+                {selected ? "Start here / End here move the highlighted edit." : "Nothing highlighted: Start here begins a new edit."} Click a row to highlight it.
               </span>
               <div className="spacer" />
               <span className="dim">
-                Output ≈ <b>{fmtTime(outputLength(edits, media.duration), false)}</b>
+                Edited movie will be about <b>{fmtTime(outputLength(edits, media.duration), false)}</b>
               </span>
             </div>
             <EditList
@@ -475,6 +522,7 @@ export default function App() {
               onChange={updateEdit}
               onDelete={deleteEdit}
               onSeek={(v) => onSeek(v, false)}
+              onAdd={newEditHere}
               duration={media.duration}
               defaultCardSeconds={settings.defaultCardSeconds}
             />
@@ -484,9 +532,9 @@ export default function App() {
         <div className="welcome" onDoubleClick={() => openMovie()}>
           <div className="welcome-card">
             <h1>Skip scenes. Mute lines. Drop in a title card.</h1>
-            <p>Open a movie to begin. Edits are stream-copied: no quality loss, and even a 4K film renders in minutes.</p>
-            <Btn onClick={() => openMovie()} primary tip="Open a movie file" shortcut="Ctrl+O">
-              Open movie…
+            <p>Open a movie to begin. Nothing is re-encoded, so there is no quality loss and even a 4K film is done in minutes.</p>
+            <Btn onClick={() => openMovie()} primary tip="Pick a movie file to edit" shortcut="Ctrl+O">
+              Open a movie…
             </Btn>
             <p className="dim small">
               MKV, MP4, MOV, AVI, TS, WebM and more. Needs ffmpeg and MKVToolNix — press <kbd>?</kbd> for help.

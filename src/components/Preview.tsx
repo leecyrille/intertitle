@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type ThumbEvent } from "../api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "../api";
 import { fmtTime, parseTime, type Edit, type MediaInfo } from "../types";
 import Btn from "./Btn";
 
@@ -9,7 +9,6 @@ interface Props {
   t: number;
   onSeek: (t: number, scrubbing: boolean) => void;
   frame: string | null;
-  thumbs: (ThumbEvent | undefined)[];
   edits: Edit[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
@@ -19,6 +18,7 @@ interface Props {
   showSubs: boolean;
   setShowSubs: (v: boolean) => void;
   audioIndex: number | null;
+  setAudioIndex: (i: number | null) => void;
   onSetStart: () => void;
   onSetEnd: () => void;
   onNewEdit: () => void;
@@ -85,7 +85,6 @@ export default function Preview(p: Props) {
         setClipStart(start);
         setClipUrl(url);
         setBuffering(false);
-        // prefetch the following chunk
         const nStart = start + CHUNK;
         if (nStart < dur) {
           fetchClip(nStart).then((u) => {
@@ -151,9 +150,10 @@ export default function Preview(p: Props) {
     return (x / r.width) * dur;
   };
   const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
     if (playing) setPlaying(false);
     dragging.current = true;
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     onSeek(timeFromEvent(e), true);
   };
   const onPointerMove = (e: React.PointerEvent) => {
@@ -166,38 +166,13 @@ export default function Preview(p: Props) {
       onSeek(timeFromEvent(e), false);
     }
   };
-
-  const stripCount = 14;
-  const strip = useMemo(() => {
-    const out: (ThumbEvent | undefined)[] = [];
-    const n = p.thumbs.length;
-    for (let i = 0; i < stripCount; i++) {
-      const target = ((i + 0.5) / stripCount) * n;
-      let best: ThumbEvent | undefined;
-      let bestD = Infinity;
-      for (let j = Math.max(0, Math.floor(target) - 3); j < Math.min(n, Math.floor(target) + 4); j++) {
-        const th = p.thumbs[j];
-        if (th && Math.abs(j - target) < bestD) {
-          best = th;
-          bestD = Math.abs(j - target);
-        }
-      }
-      out.push(best);
-    }
-    return out;
-  }, [p.thumbs]);
-
-  const hoverThumb = useMemo(() => {
-    if (hover === null || p.thumbs.length === 0) return undefined;
-    const i = Math.min(p.thumbs.length - 1, Math.floor((hover / dur) * p.thumbs.length));
-    for (let d = 0; d < 6; d++) {
-      const a = p.thumbs[i - d];
-      if (a) return a;
-      const b = p.thumbs[i + d];
-      if (b) return b;
-    }
-    return undefined;
-  }, [hover, p.thumbs, dur]);
+  // fine scrubbing: mouse wheel over the bar or the picture steps by frames (Shift = seconds)
+  const onWheel = (e: React.WheelEvent) => {
+    if (playing) return;
+    const dir = e.deltaY > 0 ? 1 : -1;
+    const step = e.shiftKey ? 1 : e.ctrlKey ? 10 : 1 / fps;
+    onSeek(Math.min(Math.max(t + dir * step, 0), dur), false);
+  };
 
   const step = (secs: number) => {
     if (playing) setPlaying(false);
@@ -216,8 +191,20 @@ export default function Preview(p: Props) {
 
   return (
     <div className="preview">
-      <div className="screen" style={{ aspectRatio: aspect }}>
-        {frameOrVideo()}
+      <div className="screen" style={{ aspectRatio: aspect }} onWheel={onWheel}>
+        {p.frame && <img className="frame" src={`data:image/jpeg;base64,${p.frame}`} alt="" style={{ visibility: playing && clipUrl ? "hidden" : "visible" }} />}
+        {!p.frame && !playing && <div className="frame-placeholder">Loading frame…</div>}
+        <video
+          ref={videoRef}
+          className="frame"
+          style={{ display: playing && clipUrl ? "block" : "none" }}
+          onTimeUpdate={(e) => {
+            const v = e.currentTarget;
+            if (playing) onSeek(Math.min(clipStart + v.currentTime, dur), true);
+          }}
+          onEnded={onEnded}
+          playsInline
+        />
         {p.showSubs && p.subText && !buffering && (
           <div className="subtitle-overlay">
             {p.subText.split("\n").map((l, i) => (
@@ -236,15 +223,15 @@ export default function Preview(p: Props) {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerLeave={() => {
-          setHover(null);
-        }}
+        onPointerLeave={() => setHover(null)}
+        onWheel={onWheel}
+        title="Drag to scrub. Mouse wheel steps one frame (Shift: 1 s, Ctrl: 10 s)."
       >
-        <div className="strip">
-          {strip.map((th, i) => (
-            <div key={i} className="strip-cell">
-              {th && <img src={`data:image/jpeg;base64,${th.data}`} alt="" draggable={false} />}
-            </div>
+        <div className="ticks">
+          {Array.from({ length: 11 }, (_, i) => (
+            <span key={i} style={{ left: `${i * 10}%` }}>
+              {fmtTime((i / 10) * dur, false).replace(/^00:/, "")}
+            </span>
           ))}
         </div>
         {media.chapters.map((c, i) => (
@@ -264,10 +251,9 @@ export default function Preview(p: Props) {
           />
         ))}
         <div className="playhead" style={{ left: `${(t / dur) * 100}%` }} />
-        {hover !== null && (
+        {hover !== null && !dragging.current && (
           <div className="hover-pop" style={{ left: `${(hover / dur) * 100}%` }}>
-            {hoverThumb && <img src={`data:image/jpeg;base64,${hoverThumb.data}`} alt="" />}
-            <div>{fmtTime(hover, false)}</div>
+            {fmtTime(hover, false)}
           </div>
         )}
       </div>
@@ -286,7 +272,7 @@ export default function Preview(p: Props) {
           <Btn onClick={() => step(-1 / fps)} tip="Back one frame" shortcut="←">
             ◀
           </Btn>
-          <Btn onClick={() => setPlaying(!playing)} primary tip={playing ? "Pause" : "Play (low-res preview)"} shortcut="Space">
+          <Btn onClick={() => setPlaying(!playing)} primary tip={playing ? "Pause" : "Play (low-res preview with sound)"} shortcut="Space">
             {playing ? "❚❚" : "▶"}
           </Btn>
           <Btn onClick={() => step(1 / fps)} tip="Forward one frame" shortcut="→">
@@ -322,26 +308,40 @@ export default function Preview(p: Props) {
         </div>
         <div className="group">
           <Btn onClick={p.onSetStart} tip={selected ? "Set the selected edit's start to here" : "Start a new edit here"} shortcut="I" active={!!selected}>
-            ⇤ Set start
+            ⇤ Start here
           </Btn>
           <Btn onClick={p.onSetEnd} tip={selected ? "Set the selected edit's end to here" : "End a new edit here"} shortcut="O" active={!!selected}>
-            Set end ⇥
+            End here ⇥
           </Btn>
           <Btn onClick={p.onNewEdit} tip="Add a new edit starting here" shortcut="N">
-            + New edit
+            + Add an edit here
           </Btn>
         </div>
         <div className="group">
+          <select
+            className="track-select"
+            value={p.audioIndex ?? ""}
+            onChange={(e) => p.setAudioIndex(e.target.value === "" ? null : Number(e.target.value))}
+            title="Audio track for the preview"
+          >
+            {media.audio.length === 0 && <option value="">No audio</option>}
+            {media.audio.map((a, i) => (
+              <option key={a.index} value={a.index}>
+                🔊 {a.language ?? "und"}
+                {a.title ? ` · ${a.title}` : ""} ({a.codec} {a.channels}ch){media.audio.length > 1 ? ` #${i + 1}` : ""}
+              </option>
+            ))}
+          </select>
           <Btn onClick={() => p.setShowSubs(!p.showSubs)} active={p.showSubs} tip="Show subtitles on the preview" shortcut="C">
             CC
           </Btn>
           <select
-            className="sub-select"
+            className="track-select"
             value={p.subTrack ?? ""}
             onChange={(e) => p.setSubTrack(e.target.value === "" ? null : Number(e.target.value))}
             title="Subtitle track to preview"
           >
-            <option value="">No subtitles</option>
+            <option value="">{p.subTracks.length ? "No subtitles" : "No text subtitles in file"}</option>
             {p.subTracks.map((s) => (
               <option key={s.index} value={s.index}>
                 {s.label}
@@ -352,24 +352,4 @@ export default function Preview(p: Props) {
       </div>
     </div>
   );
-
-  function frameOrVideo() {
-    return (
-      <>
-        {p.frame && <img className="frame" src={`data:image/jpeg;base64,${p.frame}`} alt="" style={{ visibility: playing && clipUrl ? "hidden" : "visible" }} />}
-        {!p.frame && !playing && <div className="frame-placeholder">Loading frame…</div>}
-        <video
-          ref={videoRef}
-          className="frame"
-          style={{ display: playing && clipUrl ? "block" : "none" }}
-          onTimeUpdate={(e) => {
-            const v = e.currentTarget;
-            if (playing) onSeek(Math.min(clipStart + v.currentTime, dur), true);
-          }}
-          onEnded={onEnded}
-          playsInline
-        />
-      </>
-    );
-  }
 }

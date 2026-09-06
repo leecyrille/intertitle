@@ -77,7 +77,6 @@ export interface ToolPaths {
 export interface Settings {
   tools: ToolPaths;
   card: CardStyle;
-  thumbnailCount: number;
   previewWidth: number;
   csvExtension: string;
   outputSuffix: string;
@@ -108,23 +107,18 @@ export interface RenderResult {
   secondsEncoded: number;
 }
 
+/** Plain-language names for the four edits. */
 export const KIND_LABEL: Record<EditKind, string> = {
-  remove: "Remove",
-  replace: "Replace with card",
-  textOverVideo: "Text over video",
-  mute: "Mute",
-};
-export const KIND_SHORT: Record<EditKind, string> = {
-  remove: "Remove",
-  replace: "Card",
-  textOverVideo: "Text + audio",
-  mute: "Mute",
+  remove: "Cut it out",
+  replace: "Cut it out, show a card",
+  textOverVideo: "Show a card, keep the sound",
+  mute: "Mute the sound",
 };
 export const KIND_HELP: Record<EditKind, string> = {
-  remove: "Cut this section out entirely.",
-  replace: "Cut this section out and show a text card in its place.",
-  textOverVideo: "Keep the audio, replace the picture with a text card. Length stays the same.",
-  mute: "Keep the picture, silence the audio. Nothing else changes.",
+  remove: "This part of the movie is removed. The movie gets shorter.",
+  replace: "This part is removed and a card with your text is shown instead.",
+  textOverVideo: "The picture is replaced by a card with your text, but the sound keeps playing. The movie stays the same length.",
+  mute: "The sound is silenced for this part. The picture is untouched.",
 };
 export const KIND_ORDER: EditKind[] = ["remove", "replace", "textOverVideo", "mute"];
 

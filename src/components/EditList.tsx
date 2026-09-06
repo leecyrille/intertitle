@@ -9,6 +9,7 @@ interface Props {
   onChange: (id: string, patch: Partial<Edit>) => void;
   onDelete: (id: string) => void;
   onSeek: (t: number) => void;
+  onAdd: () => void;
   duration: number;
   defaultCardSeconds: number;
 }
@@ -47,7 +48,7 @@ function TimeCell({ value, onCommit, max }: { value: number; onCommit: (v: numbe
         }
         e.stopPropagation();
       }}
-      title="H:MM:SS.mmm  (Enter to apply)"
+      title="Hours:minutes:seconds. Type a time and press Enter."
     />
   );
 }
@@ -81,7 +82,7 @@ function TextCell({ value, onCommit, placeholder }: { value: string; onCommit: (
         }
         e.stopPropagation();
       }}
-      title="Card text. Shift+Enter for a new line. Long lines wrap automatically."
+      title="What the card should say. Shift+Enter for a new line; long lines wrap by themselves."
     />
   );
 }
@@ -94,15 +95,15 @@ export default function EditList(p: Props) {
         <thead>
           <tr>
             <th className="c-num">#</th>
-            <th className="c-on" title="Include this edit when rendering">
+            <th className="c-on" title="Untick to keep an edit in the list without applying it">
               On
             </th>
-            <th className="c-type">Type</th>
-            <th className="c-time">Start</th>
-            <th className="c-time">End</th>
+            <th className="c-type">What to do</th>
+            <th className="c-time">From</th>
+            <th className="c-time">To</th>
             <th className="c-len">Length</th>
-            <th className="c-text">Card text</th>
-            <th className="c-card">Card length</th>
+            <th className="c-text">Card says</th>
+            <th className="c-card">Card shown for</th>
             <th className="c-act"></th>
           </tr>
         </thead>
@@ -110,7 +111,7 @@ export default function EditList(p: Props) {
           {p.edits.length === 0 && (
             <tr className="empty">
               <td colSpan={9}>
-                No edits yet. Scrub to a spot and press <kbd>I</kbd> to start one, <kbd>O</kbd> to end it. Or click <b>+ New edit</b>.
+                No edits yet. Scrub to a spot and press <kbd>I</kbd> to start one and <kbd>O</kbd> to end it, or use the button below.
               </td>
             </tr>
           )}
@@ -161,7 +162,7 @@ export default function EditList(p: Props) {
                 <td className="c-len mono dim">{fmtTime(e.end - e.start, true).replace(/^00:/, "")}</td>
                 <td className="c-text">
                   {hasText ? (
-                    <TextCell value={e.text} onCommit={(v) => p.onChange(e.id, { text: v })} placeholder={e.kind === "replace" ? "What the card should say…" : "Text shown while the audio plays…"} />
+                    <TextCell value={e.text} onCommit={(v) => p.onChange(e.id, { text: v })} placeholder={e.kind === "replace" ? "What happened in the part you cut…" : "What to show while the sound plays…"} />
                   ) : (
                     dash
                   )}
@@ -169,9 +170,9 @@ export default function EditList(p: Props) {
                 <td className="c-card">
                   {e.kind === "replace" ? (
                     <div className="card-len" onClick={(ev) => ev.stopPropagation()}>
-                      <select value={e.durationMode} onChange={(ev) => p.onChange(e.id, { durationMode: ev.target.value as Edit["durationMode"] })} title="How long the card is shown">
+                      <select value={e.durationMode} onChange={(ev) => p.onChange(e.id, { durationMode: ev.target.value as Edit["durationMode"] })} title="How long the card stays on screen">
                         <option value="fixed">Seconds</option>
-                        <option value="match">Match original</option>
+                        <option value="match">As long as the cut part</option>
                       </select>
                       {e.durationMode === "fixed" ? (
                         <input
@@ -180,28 +181,28 @@ export default function EditList(p: Props) {
                           step={0.5}
                           value={e.duration}
                           onChange={(ev) => p.onChange(e.id, { duration: Math.max(0.5, Number(ev.target.value) || 0.5) })}
-                          title="Card length in seconds"
+                          title="Seconds"
                         />
                       ) : (
                         <span className="mono dim">{(e.end - e.start).toFixed(1)}s</span>
                       )}
                     </div>
                   ) : e.kind === "textOverVideo" ? (
-                    <span className="mono dim" title="Same as the original, so the audio stays in sync">
-                      = {(e.end - e.start).toFixed(1)}s
+                    <span className="mono dim" title="Same as the original, so the sound stays in sync">
+                      {(e.end - e.start).toFixed(1)}s (same as original)
                     </span>
                   ) : (
                     dash
                   )}
                 </td>
                 <td className="c-act" onClick={(ev) => ev.stopPropagation()}>
-                  <Btn small onClick={() => p.onSeek(e.start)} tip="Jump to start" shortcut="[">
+                  <Btn small onClick={() => p.onSeek(e.start)} tip="Show me where it starts" shortcut="[">
                     ⇤
                   </Btn>
-                  <Btn small onClick={() => p.onSeek(e.end)} tip="Jump to end" shortcut="]">
+                  <Btn small onClick={() => p.onSeek(e.end)} tip="Show me where it ends" shortcut="]">
                     ⇥
                   </Btn>
-                  <Btn small danger onClick={() => p.onDelete(e.id)} tip="Delete this edit" shortcut="Del">
+                  <Btn small danger onClick={() => p.onDelete(e.id)} tip="Remove this edit from the list" shortcut="Del">
                     ✕
                   </Btn>
                 </td>
@@ -210,6 +211,11 @@ export default function EditList(p: Props) {
           })}
         </tbody>
       </table>
+      <div className="editlist-foot">
+        <Btn onClick={p.onAdd} tip="Adds an edit starting at the playhead. Adjust it afterwards." shortcut="N">
+          + Add another edit
+        </Btn>
+      </div>
     </div>
   );
 }

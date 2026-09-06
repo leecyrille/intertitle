@@ -1,6 +1,6 @@
 [package]
 name = "intertitle"
-version = "0.1.1"
+version = "0.1.2"
 description = "Cut scenes, mute lines and drop in title cards without re-encoding your movie."
 authors = ["Lee Maskell"]
 license = "MIT"

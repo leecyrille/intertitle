@@ -22,7 +22,6 @@ export default function RenderDialog({ media, edits, settings, tools, onClose }:
   const [result, setResult] = useState<RenderResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showLog, setShowLog] = useState(false);
-  const [keepTemp, setKeepTemp] = useState(false);
   const logRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
@@ -63,7 +62,7 @@ export default function RenderDialog({ media, edits, settings, tools, onClose }:
     setLog([]);
     setRunning(true);
     try {
-      const res = await api.render({ path: media.path, edits: enabled, output, container, style: settings.card, keepTemp });
+      const res = await api.render({ path: media.path, edits: enabled, output, container, style: settings.card, keepTemp: false });
       setResult(res);
     } catch (e) {
       setError(String(e));
@@ -75,59 +74,62 @@ export default function RenderDialog({ media, edits, settings, tools, onClose }:
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && !running && onClose()}>
       <div className="modal render">
-        <h2>Render</h2>
+        <h2>Make the edited movie</h2>
         {!result && (
           <>
             <div className="summary">
               <div>
-                <b>{enabled.length}</b> edit{enabled.length === 1 ? "" : "s"}
+                <b>{enabled.length}</b> edit{enabled.length === 1 ? "" : "s"} will be applied
                 {enabled.length > 0 && (
                   <span className="dim">
                     {" "}
                     ({Object.entries(
                       enabled.reduce<Record<string, number>>((m, e) => ((m[e.kind] = (m[e.kind] || 0) + 1), m), {})
                     )
-                      .map(([k, n]) => `${n} ${KIND_LABEL[k as Edit["kind"]].toLowerCase()}`)
+                      .map(([k, n]) => `${n} × ${KIND_LABEL[k as Edit["kind"]].toLowerCase()}`)
                       .join(", ")}
                     )
                   </span>
                 )}
               </div>
               <div>
-                Original {fmtTime(media.duration, false)} → about <b>{fmtTime(outputLength(edits, media.duration), false)}</b>
-                {removed > 0 && <span className="dim"> ({fmtTime(removed, false)} removed)</span>}
+                The movie goes from {fmtTime(media.duration, false)} to about <b>{fmtTime(outputLength(edits, media.duration), false)}</b>
+                {removed > 0 && <span className="dim"> ({fmtTime(removed, false)} cut)</span>}
               </div>
               <div>
-                Encoding needed: <b>{encodeSeconds > 0 ? `${encodeSeconds.toFixed(1)} s of title cards` : "none"}</b>. Everything else is copied as-is.
+                {encodeSeconds > 0 ? (
+                  <>
+                    Only the cards are encoded (<b>{encodeSeconds.toFixed(0)} seconds</b> in total). The rest of the movie is copied exactly as it is.
+                  </>
+                ) : (
+                  <>Nothing is re-encoded. The movie is copied exactly as it is, minus your edits.</>
+                )}
               </div>
             </div>
             <div className="warn-list">
-              {!tools?.mkvmerge && <div className="warn err">mkvmerge (MKVToolNix) is required for cutting and joining. Install it or set its path in Settings.</div>}
-              {!tools?.ffmpeg && <div className="warn err">ffmpeg is required. Install it or set its path in Settings.</div>}
-              {missingText.length > 0 && <div className="warn err">{missingText.length} card edit{missingText.length > 1 ? "s have" : " has"} no text yet.</div>}
+              {!tools?.mkvmerge && <div className="warn err">MKVToolNix was not found. It does the cutting and joining. Install it or set its location in Settings.</div>}
+              {!tools?.ffmpeg && <div className="warn err">ffmpeg was not found. Install it or set its location in Settings.</div>}
+              {missingText.length > 0 && <div className="warn err">{missingText.length} card{missingText.length > 1 ? "s have" : " has"} no text yet. Type something in the "Card says" column.</div>}
               {timelineChanges && imageSubs.length > 0 && (
                 <div className="warn">
-                  {imageSubs.length} image based subtitle track{imageSubs.length > 1 ? "s" : ""} ({imageSubs.map((s) => s.codec).join(", ")}) will be dropped because the
-                  running time changes. Text subtitles are retimed and kept.
+                  {imageSubs.length} picture-based subtitle track{imageSubs.length > 1 ? "s" : ""} ({imageSubs.map((s) => s.codec).join(", ")}) will be left out because the
+                  running time changes. Text subtitles are kept and retimed.
                 </div>
               )}
-              {timelineChanges && <div className="warn info">Cuts land on the nearest keyframe, usually within a second of the times you chose. The exact points are reported when done.</div>}
-              {container === "mp4" && <div className="warn info">MP4 output keeps text subtitles (as mov_text) and chapters. Choose MKV to keep every subtitle format.</div>}
+              {timelineChanges && <div className="warn info">Cuts land on the nearest clean cut point in the video (a keyframe), usually within a second of the time you chose. You will see the exact times when it's done.</div>}
+              {container === "mp4" && <div className="warn info">MP4 keeps text subtitles and chapters. Pick MKV to keep every kind of subtitle.</div>}
             </div>
             <div className="field-row">
-              <label>Output</label>
+              <label>Save as</label>
               <input value={output} onChange={(e) => setOutput(e.target.value)} disabled={running} />
-              <Btn onClick={pick} disabled={running} tip="Choose where to save">
-                Browse…
+              <Btn onClick={pick} disabled={running} tip="Choose a different name or folder">
+                Change…
               </Btn>
-              <select value={container} onChange={(e) => setContainer(e.target.value as "mkv" | "mp4")} disabled={running} title="Output container">
-                <option value="mkv">MKV</option>
-                <option value="mp4">MP4</option>
+              <select value={container} onChange={(e) => setContainer(e.target.value as "mkv" | "mp4")} disabled={running} title="File type">
+                <option value="mkv">MKV file</option>
+                <option value="mp4">MP4 file</option>
               </select>
             </div>
-            <label className="check-row">
-              <input type="checkbox" checked={keepTemp} onChange={(e) => setKeepTemp(e.target.checked)} disabled={running} /> Keep the temporary work folder (for troubleshooting)
-            </label>
           </>
         )}
 
@@ -146,15 +148,17 @@ export default function RenderDialog({ media, edits, settings, tools, onClose }:
             {error && <div className="warn err">{error}</div>}
             {result && (
               <div className="result">
-                <div className="ok">Done. {fmtTime(result.duration, false)} written{result.secondsEncoded > 0 ? `, ${result.secondsEncoded.toFixed(1)} s encoded` : ", nothing re-encoded"}.</div>
+                <div className="ok">
+                  Done. The edited movie is {fmtTime(result.duration, false)} long{result.secondsEncoded > 0 ? ` and only ${result.secondsEncoded.toFixed(0)} seconds of it were encoded` : " and nothing was re-encoded"}.
+                </div>
                 <div className="mono small">{result.output}</div>
                 {result.applied.length > 0 && (
                   <table className="applied">
                     <thead>
                       <tr>
                         <th>Edit</th>
-                        <th>Asked</th>
-                        <th>Actual (keyframes)</th>
+                        <th>You asked for</th>
+                        <th>Actual cut</th>
                         <th>Card</th>
                       </tr>
                     </thead>
@@ -168,7 +172,7 @@ export default function RenderDialog({ media, edits, settings, tools, onClose }:
                           <td className="mono">
                             {fmtTime(a.actualStart)} – {fmtTime(a.actualEnd)}
                           </td>
-                          <td className="mono">{a.cardSeconds != null ? `${a.cardSeconds.toFixed(2)} s` : "—"}</td>
+                          <td className="mono">{a.cardSeconds != null ? `${a.cardSeconds.toFixed(1)} s` : "—"}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -180,18 +184,18 @@ export default function RenderDialog({ media, edits, settings, tools, onClose }:
                   </div>
                 ))}
                 <div className="row">
-                  <Btn onClick={() => revealInDir(result.output)} tip="Show the file in its folder">
-                    Show in folder
+                  <Btn primary onClick={() => openPath(result.output)} tip="Open it in your usual video player">
+                    ▶ Play the edited movie
                   </Btn>
-                  <Btn onClick={() => openPath(result.output)} tip="Open with your default player">
-                    Play
+                  <Btn onClick={() => revealInDir(result.output)} tip="Open the folder it was saved in">
+                    Show the file
                   </Btn>
                 </div>
               </div>
             )}
             <div className="row">
               <button className="link" onClick={() => setShowLog((s) => !s)}>
-                {showLog ? "Hide" : "Show"} command log
+                {showLog ? "Hide" : "Show"} technical details
               </button>
             </div>
             {showLog && (
@@ -204,8 +208,8 @@ export default function RenderDialog({ media, edits, settings, tools, onClose }:
 
         <div className="modal-actions">
           {running ? (
-            <Btn danger onClick={() => api.cancelRender()} tip="Stop the render">
-              Cancel
+            <Btn danger onClick={() => api.cancelRender()} tip="Stop now. Nothing is changed in the original movie.">
+              Stop
             </Btn>
           ) : (
             <Btn onClick={onClose} tip="Close" shortcut="Esc">
@@ -213,8 +217,8 @@ export default function RenderDialog({ media, edits, settings, tools, onClose }:
             </Btn>
           )}
           {!result && (
-            <Btn primary onClick={start} disabled={!canRun} tip="Write the edited movie" shortcut="Ctrl+R">
-              {running ? "Rendering…" : "Render"}
+            <Btn primary onClick={start} disabled={!canRun} tip="Write the edited movie as a new file. The original is never changed.">
+              {running ? "Working…" : "Make the edited movie"}
             </Btn>
           )}
         </div>

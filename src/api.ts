@@ -2,11 +2,11 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen, type UnlistenFn } from "@tauri-apps/api/event";
 import { isTauri } from "./dialogs";
 import { mockInvoke, mockListen } from "./mock";
+import type { CardStyle, Edit, MediaInfo, RenderResult, Settings, ToolStatus } from "./types";
 
 const invoke = <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => (isTauri ? tauriInvoke<T>(cmd, args) : (mockInvoke(cmd, args) as Promise<T>));
 const listen = <T,>(name: string, cb: (ev: { payload: T }) => void): Promise<UnlistenFn> =>
   isTauri ? tauriListen<T>(name, cb) : Promise.resolve(mockListen(name, (payload) => cb({ payload: payload as T })));
-import type { CardStyle, Edit, MediaInfo, RenderResult, Settings, ToolStatus } from "./types";
 
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
@@ -15,9 +15,8 @@ export const api = {
   probe: (path: string) => invoke<MediaInfo>("probe_media", { path }),
   keyframesNear: (path: string, time: number, window: number) => invoke<number[]>("keyframes_near", { path, time, window }),
   nearestKeyframe: (path: string, time: number, duration: number) => invoke<number>("nearest_keyframe", { path, time, duration }),
+  /** accurate=false lands on the keyframe before `time` and is several times faster */
   frameAt: (path: string, time: number, width: number, accurate: boolean) => invoke<string>("frame_at", { path, time, width, accurate }),
-  startThumbnails: (path: string, duration: number, count: number, width: number) =>
-    invoke<void>("start_thumbnails", { path, duration, count, width }),
   previewClip: (path: string, start: number, duration: number, height: number, audioIndex: number | null) =>
     invoke<string>("preview_clip", { path, start, duration, height, audioIndex }),
   subtitleText: (path: string, streamIndex: number) => invoke<{ format: string; text: string }>("subtitle_text", { path, streamIndex }),
@@ -30,21 +29,12 @@ export const api = {
   defaultFont: () => invoke<string | null>("default_font"),
 };
 
-export interface ThumbEvent {
-  index: number;
-  count: number;
-  time: number;
-  data: string;
-}
 export interface ProgressEvent {
   stage: string;
   percent: number;
   message: string;
 }
 
-export function onThumbnail(cb: (e: ThumbEvent) => void): Promise<UnlistenFn> {
-  return listen<ThumbEvent>("thumbnail", (ev) => cb(ev.payload));
-}
 export function onProgress(cb: (e: ProgressEvent) => void): Promise<UnlistenFn> {
   return listen<ProgressEvent>("render-progress", (ev) => cb(ev.payload));
 }
